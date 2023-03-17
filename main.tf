@@ -1,3 +1,5 @@
+#Last no tainted infraestructure. Working from apigateway test and 
+#PostMan
 #General config
 locals {
   region = var.region
