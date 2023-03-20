@@ -4,7 +4,7 @@ variable "region" {
   description = "AWS region to deploy the signals infraestructure"
 }
 
-variable stage {
+variable "stage" {
   type        = string
   default     = "signals_dev_01"
   description = <<EOT

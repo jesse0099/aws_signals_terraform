@@ -3,22 +3,27 @@
 #General config
 locals {
   region = var.region
-  stage = var.stage
+  stage  = var.stage
 }
 
 provider "aws" {
   region = local.region
 }
 
+# Create an S3 bucket
+resource "aws_s3_bucket" "signal_bucket" {
+  bucket = "signal-bucket-101"
+}
+
 # Create an IAM role for Kinesis Firehose to write to S3
 resource "aws_iam_role" "firehose_role" {
-  name = "example_firehose_role"
+  name = "firehose_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Effect    = "Allow"
+        Effect = "Allow"
         Principal = {
           Service = "firehose.amazonaws.com"
         }
@@ -43,30 +48,51 @@ resource "aws_iam_role_policy_attachment" "firehose_kinesis_stream_policy" {
 
 #Kinesis Data Stream
 resource "aws_kinesis_stream" "signal_stream" {
-  name = "signal_stream"
-
+  name            = "signal_stream"
+  encryption_type = "NONE"
   stream_mode_details {
     stream_mode = "ON_DEMAND"
   }
 }
 
+# resource "aws_redshift_cluster" "signal_redshift_cluster" {
+#   cluster_identifier = "signal-redshift-cluster"
+#   database_name      = "signals"
+#   master_username    = "signals_masters"
+#   master_password    = "Signal_password_101"
+#   node_type          = "dc2.large"
+#   cluster_type       = "single-node"
+#   publicly_accessible = false
+#   skip_final_snapshot = true
+#   vpc_security_group_ids = ["sg-08b9d08ca0eaa43ae"]
+# }
+
 #Kinesis Firehose 
-resource "aws_kinesis_firehose_delivery_stream" "signal_firehose"{
-  name  = "signal_firehose"
+# resource "aws_kinesis_firehose_delivery_stream" "signal_firehose" {
+#   name = "signal_firehose"
 
-  destination = "s3"
+#   destination = "extended_s3"
 
-  s3_configuration {
-    role_arn = aws_iam_role.firehose_role.arn
-    bucket_arn = "arn:aws:s3:::devops-csv-resources-reports-dev"
-    prefix = "signal_stream_test/"
-  }
+#   extended_s3_configuration {
+#     role_arn           = aws_iam_role.firehose_role.arn
+#     bucket_arn         = aws_s3_bucket.signal_bucket.arn
+#     prefix             = "signal_stream_input/"
 
-  kinesis_source_configuration {
-    kinesis_stream_arn = aws_kinesis_stream.signal_stream.arn
-    role_arn           = aws_iam_role.firehose_role.arn
-  }
-}
+#     s3_backup_configuration {
+#       role_arn           = aws_iam_role.firehose_role.arn
+#       bucket_arn         = aws_s3_bucket.signal_bucket.arn
+#       prefix = "signal_stream_backup"
+#       buffer_size        = 15
+#       buffer_interval    = 300
+#       compression_format = "GZIP"
+#     }
+#   }
+
+#   kinesis_source_configuration {
+#     kinesis_stream_arn = aws_kinesis_stream.signal_stream.arn
+#     role_arn           = aws_iam_role.firehose_role.arn
+#   }
+# }
 
 #Policy documents
 data "aws_iam_policy_document" "apigateway_trust_policy_document" {
@@ -74,8 +100,8 @@ data "aws_iam_policy_document" "apigateway_trust_policy_document" {
     effect = "Allow"
 
     principals {
-        type        = "Service"
-        identifiers = ["apigateway.amazonaws.com"]
+      type        = "Service"
+      identifiers = ["apigateway.amazonaws.com"]
     }
 
     actions = ["sts:AssumeRole"]
@@ -92,9 +118,9 @@ data "aws_iam_policy_document" "kinesis_putrecord_policy_document" {
 
 #  Kinesis putrecord role
 resource "aws_iam_role" "kinesis_putrecord_role" {
-  name = "kinesis_putrecord_role"
-  description = "kinesis_putrecord_role for apigateway"
-  assume_role_policy = data.aws_iam_policy_document.apigateway_trust_policy_document.json 
+  name               = "kinesis_putrecord_role"
+  description        = "kinesis_putrecord_role for apigateway"
+  assume_role_policy = data.aws_iam_policy_document.apigateway_trust_policy_document.json
 }
 
 #  Kinesis putrecord policy
@@ -106,8 +132,8 @@ resource "aws_iam_policy" "kinesis_put_record_policy" {
 
 # Attach a policy to put records on kinesis to the kinesis_putrecord_role_for_apigateway role
 resource "aws_iam_role_policy_attachment" "kinesis_putrecord_role_attachments" {
-  policy_arn = aws_iam_policy.kinesis_put_record_policy.arn  
-  role = aws_iam_role.kinesis_putrecord_role.name
+  policy_arn = aws_iam_policy.kinesis_put_record_policy.arn
+  role       = aws_iam_role.kinesis_putrecord_role.name
 }
 
 #ApiGateway REST API 
@@ -135,21 +161,8 @@ resource "aws_api_gateway_integration" "signals_kinesis" {
   resource_id             = aws_api_gateway_resource.signals.id
   http_method             = aws_api_gateway_method.signal_post.http_method
   integration_http_method = "POST"
-  type                  = "AWS"
-  uri  = "arn:aws:apigateway:${local.region}:kinesis:action/PutRecord"
-
-  request_parameters = {
-    "integration.request.header.X-Amz-Target" = "'Kinesis_20131202.PutRecord'"
-    "integration.request.header.Content-Type" = "'application/x-amz-json-1.1'"
-  }
-
-  request_templates = {
-    "application/json" = jsonencode({
-      "StreamName" : "${aws_kinesis_stream.signal_stream.name}",
-      "Data" : "$util.base64Encode($input.json('$.Data'))",
-      "PartitionKey" : "$input.path('$.PartitionKey')"
-    })
-  }
+  type                    = "AWS"
+  uri                     = "arn:aws:apigateway:${local.region}:kinesis:action/PutRecord"
 
   lifecycle {
     create_before_destroy = true
@@ -163,6 +176,15 @@ resource "aws_api_gateway_method_response" "response_200" {
   resource_id = aws_api_gateway_resource.signals.id
   http_method = aws_api_gateway_method.signal_post.http_method
   status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = false
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
 }
 
 resource "aws_api_gateway_integration_response" "signals_kinesis_default_response" {
@@ -171,7 +193,11 @@ resource "aws_api_gateway_integration_response" "signals_kinesis_default_respons
   http_method = aws_api_gateway_method.signal_post.http_method
   status_code = aws_api_gateway_method_response.response_200.status_code
 
-response_templates = {
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
+
+  response_templates = {
     "application/json" = <<EOF
 {
   "statusCode": 200,
@@ -189,7 +215,7 @@ EOF
 
 resource "aws_api_gateway_deployment" "signals_deployment" {
   rest_api_id = aws_api_gateway_rest_api.signal_api.id
-    triggers = {
+  triggers = {
     # NOTE: The configuration below will satisfy ordering considerations,
     #       but not pick up all future REST API changes. More advanced patterns
     #       are possible, such as using the filesha1() function against the
@@ -207,7 +233,7 @@ resource "aws_api_gateway_deployment" "signals_deployment" {
   lifecycle {
     create_before_destroy = true
   }
-  
+
   depends_on = [
     aws_api_gateway_integration.signals_kinesis,
   ]
@@ -220,16 +246,16 @@ resource "aws_api_gateway_stage" "signals_stage" {
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.signals_log_group.arn
-    
+
     format = jsonencode({
-      "requestId": "$context.requestId",
-      "ip": "$context.identity.sourceIp",
-      "requestTime": "$context.requestTime",
-      "httpMethod": "$context.httpMethod",
-      "resourcePath": "$context.resourcePath",
-      "status": "$context.status",
-      "protocol": "$context.protocol",
-      "responseLength": "$context.responseLength"
+      "requestId" : "$context.requestId",
+      "ip" : "$context.identity.sourceIp",
+      "requestTime" : "$context.requestTime",
+      "httpMethod" : "$context.httpMethod",
+      "resourcePath" : "$context.resourcePath",
+      "status" : "$context.status",
+      "protocol" : "$context.protocol",
+      "responseLength" : "$context.responseLength"
     })
   }
 
@@ -238,7 +264,7 @@ resource "aws_api_gateway_stage" "signals_stage" {
   ]
 }
 
-resource "aws_cloudwatch_log_group" "signals_log_group"{
+resource "aws_cloudwatch_log_group" "signals_log_group" {
   name = "api-gateway/${local.stage}"
 }
 
@@ -246,14 +272,14 @@ resource "aws_api_gateway_method_settings" "signals_settings" {
   rest_api_id = aws_api_gateway_rest_api.signal_api.id
   stage_name  = aws_api_gateway_stage.signals_stage.stage_name
   method_path = "${aws_api_gateway_resource.signals.path_part}/${aws_api_gateway_method.signal_post.http_method}"
-  
+
   settings {
-    logging_level = "INFO"
-    metrics_enabled = true
-    throttling_burst_limit = 5000
-    throttling_rate_limit = 10000
-    cache_data_encrypted = true
-    cache_ttl_in_seconds = 300
+    logging_level                           = "INFO"
+    metrics_enabled                         = true
+    throttling_burst_limit                  = 5000
+    throttling_rate_limit                   = 10000
+    cache_data_encrypted                    = true
+    cache_ttl_in_seconds                    = 300
     require_authorization_for_cache_control = false
   }
 }
