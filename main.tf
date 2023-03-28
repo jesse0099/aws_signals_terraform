@@ -10,6 +10,8 @@ locals {
   api_gateway_stage_description = var.api_gateway_stage_description
   quota_limit                   = var.quota_limit
   quota_period                  = var.quota_period
+  throttling_burst_limit        = var.throttling_burst_limit
+  throttling_rate_limit         = var.throttling_rate_limit
 }
 
 provider "aws" {
@@ -320,6 +322,11 @@ resource "aws_api_gateway_usage_plan" "signals_usage_plan" {
   quota_settings {
     limit  = local.quota_limit
     period = local.quota_period
+  }
+
+  throttle_settings {
+    rate_limit  = local.throttling_rate_limit
+    burst_limit = local.throttling_burst_limit
   }
 
   api_stages {
