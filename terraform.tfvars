@@ -1,5 +1,15 @@
-region                        = "us-east-1"
-environment                   = "dev"
-terraform_location            = "https://github.com/jesse0099/aws_signals_terraform"
+region             = "us-east-1"
+environment        = "dev"
+terraform_location = "https://github.com/jesse0099/aws_signals_terraform"
+vpc_id             = "vpc-027011047702bae4b"
+
 api_gateway_stage             = "dev"
 api_gateway_stage_description = "Test integration 01"
+
+database_name             = "dev"
+master_username           = "awsuser"
+master_password           = "Awsuser1234"
+node_type                 = "dc2.large"
+cluster_type              = "single-node"
+cluster_subnet_group_name = "percy-infra-subnet-group-default"
+aws_region_cidr_block     = "52.70.63.192/27"

@@ -1,12 +1,19 @@
+#GENERAL
 variable "region" {
   type        = string
   default     = "us-east-1"
   description = "AWS region to deploy the signals infraestructure."
 }
 
+variable "terraform_location" {
+  type        = string
+  default     = ""
+  description = "Terraform project location to use on AWS tagging."
+}
+
 variable "project" {
   type        = string
-  default     = "zaelot_signals"
+  default     = "zaelot-signals"
   description = "Project name."
 }
 
@@ -16,6 +23,14 @@ variable "environment" {
   description = "Project environment (dev, test, stage, prod)."
 }
 
+variable "vpc_id" {
+  type        = string
+  default     = ""
+  description = "VPC ID for Redshift and related components deployment."
+}
+
+
+#APIGATEWAY
 variable "api_gateway_stage" {
   type        = string
   default     = ""
@@ -27,7 +42,7 @@ variable "api_gateway_stage_description" {
   default     = ""
   description = "Api Gateway stage description to use on deployment."
 }
-
+#APIGATEWAY USAGE PLAN
 variable "quota_limit" {
   type        = number
   default     = "1000"
@@ -51,9 +66,45 @@ variable "throttling_burst_limit" {
   default     = "100"
   description = "Api Gateway Usage plan token bucket capacity."
 }
-
-variable "terraform_location" {
+#REDSHIFT CLUSTER
+variable "database_name" {
   type        = string
   default     = ""
-  description = "Terraform project location to use on AWS tagging."
+  description = "Redshift database name."
+}
+
+variable "master_password" {
+  type        = string
+  default     = ""
+  description = "Redshift database master password."
+}
+
+variable "master_username" {
+  type        = string
+  default     = ""
+  description = "Redshift database master username."
+}
+
+variable "node_type" {
+  type        = string
+  default     = ""
+  description = "Redshift cluster node type."
+}
+
+variable "cluster_type" {
+  type        = string
+  default     = ""
+  description = "Redshift cluster type."
+}
+
+variable "cluster_subnet_group_name" {
+  type        = string
+  default     = ""
+  description = "Cluster Subnet Group Name.(Put only public subnets on the cluster subnet group)"
+}
+#KINESIS FIREHOSE
+variable "aws_region_cidr_block" {
+  type        = string
+  default     = ""
+  description = "Region cidr: :https://docs.aws.amazon.com/vpc/latest/userguide/aws-ip-ranges.html#aws-ip-download"
 }

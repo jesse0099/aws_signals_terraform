@@ -5,6 +5,7 @@ locals {
   region                        = var.region
   environment                   = var.environment
   project                       = var.project
+  vpc_id                        = var.vpc_id
   terraform_location            = var.terraform_location
   api_gateway_stage             = var.api_gateway_stage
   api_gateway_stage_description = var.api_gateway_stage_description
@@ -12,13 +13,32 @@ locals {
   quota_period                  = var.quota_period
   throttling_burst_limit        = var.throttling_burst_limit
   throttling_rate_limit         = var.throttling_rate_limit
+  database_name                 = var.database_name
+  master_username               = var.master_username
+  master_password               = var.master_password
+  node_type                     = var.node_type
+  cluster_type                  = var.node_type
+  aws_region_cidr_block         = var.aws_region_cidr_block
+  cluster_subnet_group_name     = var.cluster_subnet_group_name
 }
 
 provider "aws" {
   region = local.region
+
+  default_tags {
+    tags = {
+      Project     = local.project
+      Environment = local.environment
+      CostCode    = local.project
+      Terraform   = local.terraform_location
+    }
+  }
 }
 
 #DataSources
+data "aws_redshift_subnet_group" "percy_subnet_group" {
+  name = local.cluster_subnet_group_name
+}
 
 data "aws_caller_identity" "current" {}
 
@@ -107,22 +127,38 @@ resource "aws_iam_role_policy_attachment" "kinesis_putrecord_role_attachments" {
   role       = aws_iam_role.kinesis_putrecord_role.name
 }
 
+#SECURITY GROUPS
+resource "aws_security_group" "signal_firehose_ingress" {
+  name_prefix = "${local.project}-sg-${local.environment}"
+  description = "Firehose ingress access to Redshift cluster."
+  vpc_id      = local.vpc_id
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [local.aws_region_cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 #S3
 
 #Create an S3 bucket
 resource "aws_s3_bucket" "signal_bucket" {
   bucket = "signal-bucket-${local.environment}"
-
   tags = {
-    Created_By  = data.aws_caller_identity.current.arn
-    Project     = local.project
-    Environment = local.environment
-    CostCode    = local.project
-    Terraform   = local.terraform_location
+    Created_By = data.aws_caller_identity.current.arn
   }
 }
 
-#Kinesis Data Stream
+#KINESIS DATA STREAM
 resource "aws_kinesis_stream" "signal_stream" {
   name            = "signal-stream-${local.environment}"
   encryption_type = "NONE"
@@ -131,13 +167,33 @@ resource "aws_kinesis_stream" "signal_stream" {
   }
 
   tags = {
-    Created_By  = data.aws_caller_identity.current.arn
-    Project     = local.project
-    Environment = local.environment
-    CostCode    = local.project
-    Terraform   = local.terraform_location
+    Created_By = data.aws_caller_identity.current.arn
   }
 }
+
+#KINESIS DELIVERY STREAM
+
+
+#REDSHIFT CLUSTER
+resource "aws_redshift_cluster" "signals_redshift_cluster" {
+  cluster_identifier = "${local.project}-cluster-${local.environment}"
+  database_name      = local.database_name
+  master_username    = local.master_username
+  master_password    = local.master_password
+  node_type          = local.node_type
+  cluster_type       = local.cluster_type
+
+  cluster_security_groups = [
+    aws_security_group.signal_firehose_ingress.id
+  ]
+
+  vpc_security_group_ids = [
+    aws_security_group.signal_firehose_ingress.id
+  ]
+
+  cluster_subnet_group_name = data.aws_redshift_subnet_group.percy_subnet_group.name
+}
+
 
 #ApiGateway REST API 
 resource "aws_api_gateway_rest_api" "signal_api" {
