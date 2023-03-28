@@ -1,1 +1,5 @@
-region = "us-east-1"
+region                        = "us-east-1"
+environment                   = "dev"
+terraform_location            = "https://github.com/jesse0099/aws_signals_terraform"
+api_gateway_stage             = "dev"
+api_gateway_stage_description = "Test integration 01"
