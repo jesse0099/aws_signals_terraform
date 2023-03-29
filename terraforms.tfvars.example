@@ -1,0 +1,15 @@
+region             = ""
+environment        = ""
+terraform_location = ""
+vpc_id             = ""
+
+api_gateway_stage             = ""
+api_gateway_stage_description = ""
+
+database_name             = ""
+master_username           = ""
+master_password           = ""
+node_type                 = ""
+cluster_type              = ""
+cluster_subnet_group_name = ""
+aws_region_cidr_block     = ""
