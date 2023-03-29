@@ -118,6 +118,10 @@ resource "aws_iam_role" "signal_redshift_role" {
     ]
   })
   
+  tags = {
+    Created_By : data.aws_caller_identity.current.arn
+  }
+
   lifecycle {
     create_before_destroy = true
   }
@@ -138,6 +142,10 @@ resource "aws_iam_role" "firehose_role" {
       }
     ]
   })
+
+  tags = {
+    Created_By : data.aws_caller_identity.current.arn
+  }
 }
 
 #  Kinesis putrecord role
@@ -145,6 +153,10 @@ resource "aws_iam_role" "kinesis_putrecord_role" {
   name               = "${local.project}-kinesis_putrecord-${local.environment}-role"
   description        = "kinesis_putrecord_role for apigateway"
   assume_role_policy = data.aws_iam_policy_document.apigateway_trust_policy_document.json
+
+  tags = {
+    Created_By : data.aws_caller_identity.current.arn
+  }
 }
 
 # Policies
@@ -154,12 +166,20 @@ resource "aws_iam_policy" "kinesis_put_record_policy" {
   name        = "${local.project}-kinesis_put_record-${local.environment}-policy"
   description = "kinesis_put_record_policy for signal_stream"
   policy      = data.aws_iam_policy_document.kinesis_putrecord_policy_document.json
+  
+  tags = {
+    Created_By : data.aws_caller_identity.current.arn
+  }
 }
 
 resource "aws_iam_policy" "firehose_s3_policy" {
   name        = "${local.project}-firehose_s3_policy-${local.environment}-policy"
   description = "firehose s3 full management policy for ${local.project}"
   policy      = data.aws_iam_policy_document.firehose_s3_policy_document.json
+  
+  tags = {
+    Created_By : data.aws_caller_identity.current.arn
+  }
 }
 
 # Policy attachments
@@ -281,6 +301,10 @@ resource "aws_redshiftdata_statement" "signals_redshift_data_statement" {
   database           = aws_redshift_cluster.signals_redshift_cluster.database_name
   db_user            = aws_redshift_cluster.signals_redshift_cluster.master_username
   sql                = local.redshift_data_statement
+  
+  depends_on = [
+    aws_redshift_cluster.signals_redshift_cluster
+  ]
 }
 
 #KINESIS FIREHOSE
@@ -493,7 +517,11 @@ resource "aws_api_gateway_stage" "signals_stage" {
 #STAGE ACCESS LOG GROUP
 resource "aws_cloudwatch_log_group" "signals_log_group" {
   name = "/aws/api_gateway/${aws_api_gateway_rest_api.signal_api.name}"
-
+  
+  tags = {
+    Created_By : data.aws_caller_identity.current.arn
+  }
+  
   lifecycle {
     create_before_destroy = true
   }
@@ -503,6 +531,10 @@ resource "aws_cloudwatch_log_group" "signals_log_group" {
 resource "aws_api_gateway_api_key" "signals_api_key" {
   name    = "${local.project}-api_key-${local.environment}"
   enabled = true
+  
+  tags = {
+    Created_By : data.aws_caller_identity.current.arn
+  }
 }
 
 resource "aws_api_gateway_usage_plan" "signals_usage_plan" {
@@ -521,6 +553,10 @@ resource "aws_api_gateway_usage_plan" "signals_usage_plan" {
   api_stages {
     api_id = aws_api_gateway_rest_api.signal_api.id
     stage  = aws_api_gateway_stage.signals_stage.stage_name
+  }
+
+  tags = {
+    Created_By : data.aws_caller_identity.current.arn
   }
 }
 
