@@ -17,7 +17,7 @@ locals {
   master_username               = var.master_username
   master_password               = var.master_password
   node_type                     = var.node_type
-  cluster_type                  = var.node_type
+  cluster_type                  = var.cluster_type
   aws_region_cidr_block         = var.aws_region_cidr_block
   cluster_subnet_group_name     = var.cluster_subnet_group_name
 }
@@ -63,6 +63,18 @@ data "aws_iam_policy_document" "kinesis_putrecord_policy_document" {
   }
 }
 
+data "aws_iam_policy" "s3_read_only_access" {
+  name = "AmazonS3ReadOnlyAccess"
+}
+
+data "aws_iam_policy" "kinesis_read_only_access" {
+  name = "AmazonKinesisReadOnlyAccess"
+}
+
+data "aws_iam_policy" "redshift_all_commands_full_access" {
+  name = "AmazonRedshiftAllCommandsFullAccess"
+}
+
 output "api_gateway_id" {
   value       = aws_api_gateway_rest_api.signal_api.id
   sensitive   = false
@@ -73,7 +85,28 @@ output "api_gateway_id" {
 }
 
 # Roles
-# Create an IAM role for Kinesis Firehose to write to S3
+# Redshift Cluster Role
+resource "aws_iam_role" "signal_redshift_role" {
+  name = "${local.project}-redshift_cluster-${local.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service : [
+            "redshift-serverless.amazonaws.com",
+            "redshift.amazonaws.com",
+            "sagemaker.amazonaws.com"
+          ]
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role" "firehose_role" {
   name = "firehose_role-${local.environment}"
 
@@ -122,14 +155,29 @@ resource "aws_iam_role_policy_attachment" "firehose_kinesis_stream_policy" {
 }
 
 # Attach a policy to put records on kinesis to the kinesis_putrecord_role_for_apigateway role
-resource "aws_iam_role_policy_attachment" "kinesis_putrecord_role_attachments" {
+resource "aws_iam_role_policy_attachment" "kinesis_putrecord_role_policy" {
   policy_arn = aws_iam_policy.kinesis_put_record_policy.arn
   role       = aws_iam_role.kinesis_putrecord_role.name
 }
 
+resource "aws_iam_role_policy_attachment" "signal_redshift_s3_read_only_policy" {
+  policy_arn = data.aws_iam_policy.s3_read_only_access.arn
+  role       = aws_iam_role.signal_redshift_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "signal_redshift_kinesis_read_only_policy" {
+  policy_arn = data.aws_iam_policy.kinesis_read_only_access.arn
+  role       = aws_iam_role.signal_redshift_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "signal_redshift_all_commands_full_access_policy" {
+  policy_arn = data.aws_iam_policy.redshift_all_commands_full_access.arn
+  role       = aws_iam_role.signal_redshift_role.name
+}
+
 #SECURITY GROUPS
 resource "aws_security_group" "signal_firehose_ingress" {
-  name_prefix = "${local.project}-sg-${local.environment}"
+  name = "${local.project}-sg-${local.environment}"
   description = "Firehose ingress access to Redshift cluster."
   vpc_id      = local.vpc_id
 
@@ -182,16 +230,21 @@ resource "aws_redshift_cluster" "signals_redshift_cluster" {
   master_password    = local.master_password
   node_type          = local.node_type
   cluster_type       = local.cluster_type
-
-  cluster_security_groups = [
-    aws_security_group.signal_firehose_ingress.id
-  ]
+  cluster_subnet_group_name = data.aws_redshift_subnet_group.percy_subnet_group.name
 
   vpc_security_group_ids = [
     aws_security_group.signal_firehose_ingress.id
   ]
 
-  cluster_subnet_group_name = data.aws_redshift_subnet_group.percy_subnet_group.name
+  tags = {
+    force_change = true
+  }
+}
+
+resource "aws_redshift_cluster_iam_roles" "signals_redshift_cluster_iam_roles" {
+  cluster_identifier   = aws_redshift_cluster.signals_redshift_cluster.cluster_identifier
+  iam_role_arns        = [aws_iam_role.signal_redshift_role.arn]
+  default_iam_role_arn = aws_iam_role.signal_redshift_role.arn
 }
 
 
