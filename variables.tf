@@ -131,3 +131,8 @@ variable "redshift_retry_duration" {
   description = "The length of time (seconds) during which Firehose retries delivery after a failure."
 }
 
+variable "redshift_data_statement" {
+  type        = string
+  default     = ""
+  description = "SQL to execute on the redshift cluster."
+}

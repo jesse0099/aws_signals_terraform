@@ -20,6 +20,7 @@ locals {
   node_type                 = var.node_type
   cluster_type              = var.cluster_type
   cluster_subnet_group_name = var.cluster_subnet_group_name
+  redshift_data_statement   = var.redshift_data_statement
   #KINESIS_FIREHOSE
   aws_region_cidr_block       = var.aws_region_cidr_block
   firehose_data_table_name    = var.firehose_data_table_name
@@ -69,6 +70,20 @@ data "aws_iam_policy_document" "kinesis_putrecord_policy_document" {
   }
 }
 
+data "aws_iam_policy_document" "firehose_s3_policy_document" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:*",
+      "s3-object-lambda:*"
+    ]
+    resources = [
+      "${aws_s3_bucket.signal_bucket.arn}",
+      "${aws_s3_bucket.signal_bucket.arn}/*"
+    ]
+  }
+}
+
 data "aws_iam_policy" "s3_read_only_access" {
   name = "AmazonS3ReadOnlyAccess"
 }
@@ -81,19 +96,10 @@ data "aws_iam_policy" "redshift_all_commands_full_access" {
   name = "AmazonRedshiftAllCommandsFullAccess"
 }
 
-output "api_gateway_id" {
-  value       = aws_api_gateway_rest_api.signal_api.id
-  sensitive   = false
-  description = "ApiGateway ID for signal"
-  depends_on = [
-    aws_api_gateway_rest_api.signal_api,
-  ]
-}
-
 # Roles
 # Redshift Cluster Role
 resource "aws_iam_role" "signal_redshift_role" {
-  name = "${local.project}-redshift_cluster-${local.environment}"
+  name = "${local.project}-redshift_cluster-${local.environment}-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -111,10 +117,14 @@ resource "aws_iam_role" "signal_redshift_role" {
       }
     ]
   })
+  
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_iam_role" "firehose_role" {
-  name = "firehose_role-${local.environment}"
+  name = "${local.project}-firehose-${local.environment}-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -132,7 +142,7 @@ resource "aws_iam_role" "firehose_role" {
 
 #  Kinesis putrecord role
 resource "aws_iam_role" "kinesis_putrecord_role" {
-  name               = "kinesis_putrecord_role-${local.environment}"
+  name               = "${local.project}-kinesis_putrecord-${local.environment}-role"
   description        = "kinesis_putrecord_role for apigateway"
   assume_role_policy = data.aws_iam_policy_document.apigateway_trust_policy_document.json
 }
@@ -141,16 +151,22 @@ resource "aws_iam_role" "kinesis_putrecord_role" {
 
 #  Kinesis putrecord policy
 resource "aws_iam_policy" "kinesis_put_record_policy" {
-  name        = "kinesis_put_record_policy-${local.environment}"
+  name        = "${local.project}-kinesis_put_record-${local.environment}-policy"
   description = "kinesis_put_record_policy for signal_stream"
   policy      = data.aws_iam_policy_document.kinesis_putrecord_policy_document.json
+}
+
+resource "aws_iam_policy" "firehose_s3_policy" {
+  name        = "${local.project}-firehose_s3_policy-${local.environment}-policy"
+  description = "firehose s3 full management policy for ${local.project}"
+  policy      = data.aws_iam_policy_document.firehose_s3_policy_document.json
 }
 
 # Policy attachments
 
 # Grant the Kinesis Firehose role permission to write to S3
-resource "aws_iam_role_policy_attachment" "firehose_s3_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+resource "aws_iam_role_policy_attachment" "signal_firehose_s3_full_access_policy" {
+  policy_arn = aws_iam_policy.firehose_s3_policy.arn
   role       = aws_iam_role.firehose_role.name
 }
 
@@ -160,7 +176,6 @@ resource "aws_iam_role_policy_attachment" "firehose_kinesis_stream_policy" {
   role       = aws_iam_role.firehose_role.name
 }
 
-# Attach a policy to put records on kinesis to the kinesis_putrecord_role_for_apigateway role
 resource "aws_iam_role_policy_attachment" "kinesis_putrecord_role_policy" {
   policy_arn = aws_iam_policy.kinesis_put_record_policy.arn
   role       = aws_iam_role.kinesis_putrecord_role.name
@@ -183,7 +198,7 @@ resource "aws_iam_role_policy_attachment" "signal_redshift_all_commands_full_acc
 
 #SECURITY GROUPS
 resource "aws_security_group" "signal_firehose_ingress" {
-  name        = "${local.project}-sg-${local.environment}"
+  name        = "${local.project}-firehose_to_redshift_ingress-${local.environment}-sg"
   description = "Firehose ingress access to Redshift cluster."
   vpc_id      = local.vpc_id
 
@@ -200,13 +215,21 @@ resource "aws_security_group" "signal_firehose_ingress" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Created_By = data.aws_caller_identity.current.arn
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 #S3
 
 #Create an S3 bucket
 resource "aws_s3_bucket" "signal_bucket" {
-  bucket = "signal-bucket-${local.environment}"
+  bucket = "${local.project}-data-${local.environment}-s3"
   tags = {
     Created_By = data.aws_caller_identity.current.arn
   }
@@ -214,7 +237,7 @@ resource "aws_s3_bucket" "signal_bucket" {
 
 #KINESIS DATA STREAM
 resource "aws_kinesis_stream" "signal_stream" {
-  name            = "signal-stream-${local.environment}"
+  name            = "${local.project}-stream-${local.environment}"
   encryption_type = "NONE"
   stream_mode_details {
     stream_mode = "ON_DEMAND"
@@ -241,6 +264,23 @@ resource "aws_redshift_cluster" "signals_redshift_cluster" {
   vpc_security_group_ids = [
     aws_security_group.signal_firehose_ingress.id
   ]
+
+  tags = {
+    Created_By = data.aws_caller_identity.current.arn
+  }
+}
+
+resource "aws_redshift_cluster_iam_roles" "signals_redshift_cluster_iam_roles" {
+  cluster_identifier   = aws_redshift_cluster.signals_redshift_cluster.cluster_identifier
+  iam_role_arns        = [aws_iam_role.signal_redshift_role.arn]
+  default_iam_role_arn = aws_iam_role.signal_redshift_role.arn
+}
+
+resource "aws_redshiftdata_statement" "signals_redshift_data_statement" {
+  cluster_identifier = aws_redshift_cluster.signals_redshift_cluster.cluster_identifier
+  database           = aws_redshift_cluster.signals_redshift_cluster.database_name
+  db_user            = aws_redshift_cluster.signals_redshift_cluster.master_username
+  sql                = local.redshift_data_statement
 }
 
 #KINESIS FIREHOSE
@@ -256,7 +296,7 @@ resource "aws_kinesis_firehose_delivery_stream" "signal_firehose" {
   s3_configuration {
     role_arn        = aws_iam_role.firehose_role.arn
     bucket_arn      = aws_s3_bucket.signal_bucket.arn
-    prefix          = "${local.project}-inputs-${local.environment}"
+    prefix          = "${local.project}-inputs-${local.environment}-"
     buffer_size     = 5
     buffer_interval = 300
     # compression_format = "GZIP"
@@ -278,22 +318,19 @@ resource "aws_kinesis_firehose_delivery_stream" "signal_firehose" {
       bucket_arn      = aws_s3_bucket.signal_bucket.arn
       buffer_size     = 5
       buffer_interval = 300
-      prefix          = "${local.project}-backups-${local.environment}"
+      prefix          = "${local.project}-backups-${local.environment}-"
       # compression_format = "GZIP"
     }
   }
-}
 
-resource "aws_redshift_cluster_iam_roles" "signals_redshift_cluster_iam_roles" {
-  cluster_identifier   = aws_redshift_cluster.signals_redshift_cluster.cluster_identifier
-  iam_role_arns        = [aws_iam_role.signal_redshift_role.arn]
-  default_iam_role_arn = aws_iam_role.signal_redshift_role.arn
+  tags = {
+    Created_By = data.aws_caller_identity.current.arn
+  }
 }
-
 
 #ApiGateway REST API 
 resource "aws_api_gateway_rest_api" "signal_api" {
-  name = "signal_api-${local.environment}"
+  name = "${local.project}-${local.environment}"
 }
 
 #ApiGateway
@@ -453,7 +490,7 @@ resource "aws_api_gateway_stage" "signals_stage" {
   ]
 }
 
-#STAGE LOG ACCESS LOG GROUP
+#STAGE ACCESS LOG GROUP
 resource "aws_cloudwatch_log_group" "signals_log_group" {
   name = "/aws/api_gateway/${aws_api_gateway_rest_api.signal_api.name}"
 
@@ -464,12 +501,12 @@ resource "aws_cloudwatch_log_group" "signals_log_group" {
 
 #API KEY
 resource "aws_api_gateway_api_key" "signals_api_key" {
-  name    = "signals_api_key-${local.environment}"
+  name    = "${local.project}-api_key-${local.environment}"
   enabled = true
 }
 
 resource "aws_api_gateway_usage_plan" "signals_usage_plan" {
-  name = "signals_usage_plan-${local.environment}"
+  name = "${local.project}-usage_plan-${local.environment}"
 
   quota_settings {
     limit  = local.quota_limit
