@@ -28,8 +28,6 @@ variable "vpc_id" {
   default     = ""
   description = "VPC ID for Redshift and related components deployment."
 }
-
-
 #APIGATEWAY
 variable "api_gateway_stage" {
   type        = string
@@ -108,3 +106,28 @@ variable "aws_region_cidr_block" {
   default     = ""
   description = "Region cidr: :https://docs.aws.amazon.com/vpc/latest/userguide/aws-ip-ranges.html#aws-ip-download"
 }
+
+variable "firehose_data_table_name" {
+  type        = string
+  default     = "signals"
+  description = " The name of the table in the redshift cluster that the s3 bucket will copy to."
+}
+
+variable "firehose_data_table_columns" {
+  type        = string
+  default     = ""
+  description = "The data table columns that will be targeted by the copy command."
+}
+
+variable "firehose_copy_options" {
+  type        = string
+  default     = ""
+  description = "Copy options for copying the data from the s3 intermediate bucket into redshift."
+}
+
+variable "redshift_retry_duration" {
+  type        = string
+  default     = ""
+  description = "The length of time (seconds) during which Firehose retries delivery after a failure."
+}
+

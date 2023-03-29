@@ -1,25 +1,31 @@
-#Last no tainted infraestructure.
-
-#General config
 locals {
-  region                        = var.region
-  environment                   = var.environment
-  project                       = var.project
-  vpc_id                        = var.vpc_id
-  terraform_location            = var.terraform_location
+  #GENERAL
+  region             = var.region
+  environment        = var.environment
+  project            = var.project
+  vpc_id             = var.vpc_id
+  terraform_location = var.terraform_location
+  #APIGATEWAY
   api_gateway_stage             = var.api_gateway_stage
   api_gateway_stage_description = var.api_gateway_stage_description
-  quota_limit                   = var.quota_limit
-  quota_period                  = var.quota_period
-  throttling_burst_limit        = var.throttling_burst_limit
-  throttling_rate_limit         = var.throttling_rate_limit
-  database_name                 = var.database_name
-  master_username               = var.master_username
-  master_password               = var.master_password
-  node_type                     = var.node_type
-  cluster_type                  = var.cluster_type
-  aws_region_cidr_block         = var.aws_region_cidr_block
-  cluster_subnet_group_name     = var.cluster_subnet_group_name
+  #USAGE PLAN
+  quota_limit            = var.quota_limit
+  quota_period           = var.quota_period
+  throttling_burst_limit = var.throttling_burst_limit
+  throttling_rate_limit  = var.throttling_rate_limit
+  #REDSHIFT CLUSTER
+  database_name             = var.database_name
+  master_username           = var.master_username
+  master_password           = var.master_password
+  node_type                 = var.node_type
+  cluster_type              = var.cluster_type
+  cluster_subnet_group_name = var.cluster_subnet_group_name
+  #KINESIS_FIREHOSE
+  aws_region_cidr_block       = var.aws_region_cidr_block
+  firehose_data_table_name    = var.firehose_data_table_name
+  firehose_data_table_columns = var.firehose_data_table_columns
+  firehose_copy_options       = var.firehose_copy_options
+  redshift_retry_duration     = var.redshift_retry_duration
 }
 
 provider "aws" {
@@ -177,7 +183,7 @@ resource "aws_iam_role_policy_attachment" "signal_redshift_all_commands_full_acc
 
 #SECURITY GROUPS
 resource "aws_security_group" "signal_firehose_ingress" {
-  name = "${local.project}-sg-${local.environment}"
+  name        = "${local.project}-sg-${local.environment}"
   description = "Firehose ingress access to Redshift cluster."
   vpc_id      = local.vpc_id
 
@@ -224,20 +230,57 @@ resource "aws_kinesis_stream" "signal_stream" {
 
 #REDSHIFT CLUSTER
 resource "aws_redshift_cluster" "signals_redshift_cluster" {
-  cluster_identifier = "${local.project}-cluster-${local.environment}"
-  database_name      = local.database_name
-  master_username    = local.master_username
-  master_password    = local.master_password
-  node_type          = local.node_type
-  cluster_type       = local.cluster_type
+  cluster_identifier        = "${local.project}-cluster-${local.environment}"
+  database_name             = local.database_name
+  master_username           = local.master_username
+  master_password           = local.master_password
+  node_type                 = local.node_type
+  cluster_type              = local.cluster_type
   cluster_subnet_group_name = data.aws_redshift_subnet_group.percy_subnet_group.name
 
   vpc_security_group_ids = [
     aws_security_group.signal_firehose_ingress.id
   ]
+}
 
-  tags = {
-    force_change = true
+#KINESIS FIREHOSE
+resource "aws_kinesis_firehose_delivery_stream" "signal_firehose" {
+  name        = "${local.project}-firehose-${local.environment}"
+  destination = "redshift"
+
+  kinesis_source_configuration {
+    kinesis_stream_arn = aws_kinesis_stream.signal_stream.arn
+    role_arn           = aws_iam_role.firehose_role.arn
+  }
+
+  s3_configuration {
+    role_arn        = aws_iam_role.firehose_role.arn
+    bucket_arn      = aws_s3_bucket.signal_bucket.arn
+    prefix          = "${local.project}-inputs-${local.environment}"
+    buffer_size     = 5
+    buffer_interval = 300
+    # compression_format = "GZIP"
+  }
+
+  redshift_configuration {
+    role_arn           = aws_iam_role.firehose_role.arn
+    cluster_jdbcurl    = "jdbc:redshift://${aws_redshift_cluster.signals_redshift_cluster.endpoint}/${aws_redshift_cluster.signals_redshift_cluster.database_name}"
+    username           = local.master_username
+    password           = local.master_password
+    data_table_name    = local.firehose_data_table_name
+    copy_options       = local.firehose_copy_options
+    data_table_columns = local.firehose_data_table_columns
+    s3_backup_mode     = "Enabled"
+    retry_duration     = local.redshift_retry_duration
+
+    s3_backup_configuration {
+      role_arn        = aws_iam_role.firehose_role.arn
+      bucket_arn      = aws_s3_bucket.signal_bucket.arn
+      buffer_size     = 5
+      buffer_interval = 300
+      prefix          = "${local.project}-backups-${local.environment}"
+      # compression_format = "GZIP"
+    }
   }
 }
 
