@@ -22,11 +22,18 @@ locals {
   cluster_subnet_group_name = var.cluster_subnet_group_name
   redshift_data_statement   = var.redshift_data_statement
   #KINESIS_FIREHOSE
-  aws_region_cidr_block       = var.aws_region_cidr_block
-  firehose_data_table_name    = var.firehose_data_table_name
-  firehose_data_table_columns = var.firehose_data_table_columns
-  firehose_copy_options       = var.firehose_copy_options
-  redshift_retry_duration     = var.redshift_retry_duration
+  aws_region_cidr_block                = var.aws_region_cidr_block
+  firehose_data_table_name             = var.firehose_data_table_name
+  firehose_data_table_columns          = var.firehose_data_table_columns
+  firehose_copy_options                = var.firehose_copy_options
+  redshift_retry_duration              = var.redshift_retry_duration
+  kinesis_s3_buffer_size               = var.kinesis_s3_buffer_size
+  kinesis_backup_s3_buffer_size        = var.kinesis_backup_s3_buffer_size
+  kinesis_s3_buffer_interval           = var.kinesis_s3_buffer_interval
+  kinesis_backup_s3_buffer_interval    = var.kinesis_backup_s3_buffer_interval
+  kinesis_backup_s3_compression_format = var.kinesis_backup_s3_compression_format
+  kinesis_s3_compression_format        = var.kinesis_s3_compression_format
+  api_gateway_key_required = var.api_gateway_key_required
 }
 
 provider "aws" {
@@ -117,7 +124,7 @@ resource "aws_iam_role" "signal_redshift_role" {
       }
     ]
   })
-  
+
   tags = {
     Created_By : data.aws_caller_identity.current.arn
   }
@@ -166,7 +173,7 @@ resource "aws_iam_policy" "kinesis_put_record_policy" {
   name        = "${local.project}-kinesis_put_record-${local.environment}-policy"
   description = "kinesis_put_record_policy for signal_stream"
   policy      = data.aws_iam_policy_document.kinesis_putrecord_policy_document.json
-  
+
   tags = {
     Created_By : data.aws_caller_identity.current.arn
   }
@@ -176,7 +183,7 @@ resource "aws_iam_policy" "firehose_s3_policy" {
   name        = "${local.project}-firehose_s3_policy-${local.environment}-policy"
   description = "firehose s3 full management policy for ${local.project}"
   policy      = data.aws_iam_policy_document.firehose_s3_policy_document.json
-  
+
   tags = {
     Created_By : data.aws_caller_identity.current.arn
   }
@@ -301,7 +308,7 @@ resource "aws_redshiftdata_statement" "signals_redshift_data_statement" {
   database           = aws_redshift_cluster.signals_redshift_cluster.database_name
   db_user            = aws_redshift_cluster.signals_redshift_cluster.master_username
   sql                = local.redshift_data_statement
-  
+
   depends_on = [
     aws_redshift_cluster.signals_redshift_cluster
   ]
@@ -321,9 +328,9 @@ resource "aws_kinesis_firehose_delivery_stream" "signal_firehose" {
     role_arn        = aws_iam_role.firehose_role.arn
     bucket_arn      = aws_s3_bucket.signal_bucket.arn
     prefix          = "${local.project}-inputs-${local.environment}-"
-    buffer_size     = 5
-    buffer_interval = 300
-    # compression_format = "GZIP"
+    buffer_size     = local.kinesis_s3_buffer_size
+    buffer_interval = local.kinesis_s3_buffer_interval
+    compression_format = local.kinesis_s3_compression_format
   }
 
   redshift_configuration {
@@ -340,10 +347,10 @@ resource "aws_kinesis_firehose_delivery_stream" "signal_firehose" {
     s3_backup_configuration {
       role_arn        = aws_iam_role.firehose_role.arn
       bucket_arn      = aws_s3_bucket.signal_bucket.arn
-      buffer_size     = 5
-      buffer_interval = 300
+      buffer_size     = local.kinesis_backup_s3_buffer_size
+      buffer_interval = local.kinesis_backup_s3_buffer_interval
       prefix          = "${local.project}-backups-${local.environment}-"
-      # compression_format = "GZIP"
+      compression_format = local.kinesis_backup_s3_compression_format
     }
   }
 
@@ -372,10 +379,14 @@ resource "aws_api_gateway_method" "signal_post" {
   resource_id      = aws_api_gateway_resource.signals.id
   http_method      = "POST"
   authorization    = "NONE"
-  api_key_required = true
+  api_key_required = local.api_gateway_key_required
 
   request_parameters = {
     "method.request.header.x-api-key" = true
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -517,11 +528,11 @@ resource "aws_api_gateway_stage" "signals_stage" {
 #STAGE ACCESS LOG GROUP
 resource "aws_cloudwatch_log_group" "signals_log_group" {
   name = "/aws/api_gateway/${aws_api_gateway_rest_api.signal_api.name}"
-  
+
   tags = {
     Created_By : data.aws_caller_identity.current.arn
   }
-  
+
   lifecycle {
     create_before_destroy = true
   }
@@ -531,7 +542,7 @@ resource "aws_cloudwatch_log_group" "signals_log_group" {
 resource "aws_api_gateway_api_key" "signals_api_key" {
   name    = "${local.project}-api_key-${local.environment}"
   enabled = true
-  
+
   tags = {
     Created_By : data.aws_caller_identity.current.arn
   }

@@ -40,6 +40,12 @@ variable "api_gateway_stage_description" {
   default     = ""
   description = "Api Gateway stage description to use on deployment."
 }
+
+variable "api_gateway_key_required" {
+  type        = bool
+  default     = true
+  description = "Does api calls require api key?"
+}
 #APIGATEWAY USAGE PLAN
 variable "quota_limit" {
   type        = number
@@ -100,6 +106,12 @@ variable "cluster_subnet_group_name" {
   default     = ""
   description = "Cluster Subnet Group Name.(Put only public subnets on the cluster subnet group)"
 }
+
+variable "redshift_data_statement" {
+  type        = string
+  default     = ""
+  description = "SQL to execute on the redshift cluster."
+}
 #KINESIS FIREHOSE
 variable "aws_region_cidr_block" {
   type        = string
@@ -131,8 +143,65 @@ variable "redshift_retry_duration" {
   description = "The length of time (seconds) during which Firehose retries delivery after a failure."
 }
 
-variable "redshift_data_statement" {
+variable "kinesis_s3_buffer_size" {
+  type        = number
+  default     = "5"
+  description = <<-EOT
+  (Intermediate bucket) 
+  Buffer incoming data to the specified size, in MBs, before delivering it to the destination."
+  Set it to a value greater than the amount of data typically ingested into the delivery stream in
+  10 seconds.
+EOT
+}
+
+variable "kinesis_backup_s3_buffer_size" {
+  type        = number
+  default     = "5"
+  description = <<-EOT
+  (Backup bucket) 
+  Buffer incoming data to the specified size, in MBs, 
+  before delivering it to the destination."
+  Set it to a value greater than the amount of data 
+  typically ingested into the delivery stream in 10 seconds.
+EOT
+}
+
+variable "kinesis_s3_buffer_interval" {
+  type        = number
+  default     = "300"
+  description = <<-EOT
+  (Intermediate bucket) 
+  Buffer incoming data for the specified period of time, in seconds,
+  before delivering it to the destination. 
+EOT
+}
+
+variable "kinesis_backup_s3_buffer_interval" {
+  type        = number
+  default     = "300"
+  description = <<-EOT
+  (Backup bucket) 
+  Buffer incoming data for the specified period of time, in seconds, 
+  before delivering it to the destination. 
+EOT
+}
+
+variable "kinesis_s3_compression_format" {
   type        = string
-  default     = ""
-  description = "SQL to execute on the redshift cluster."
+  default     = "UNCOMPRESSED"
+  description = <<-EOT
+   (Intermediate bucket) 
+   The compression format. 
+   Valid values are: GZIP, ZIP, Snappy, and HADOOP_SNAPPY.
+EOT
+}
+
+variable "kinesis_backup_s3_compression_format" {
+  type        = string
+  default     = "UNCOMPRESSED"
+  description = <<-EOT
+   (Backup bucket)
+   The compression format. 
+   Valid values are: GZIP, ZIP, Snappy, and HADOOP_SNAPPY.
+EOT
 }
