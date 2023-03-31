@@ -13,7 +13,7 @@ variable "terraform_location" {
 
 variable "project" {
   type        = string
-  default     = "zaelot-signals"
+  default     = ""
   description = "Project name."
 }
 
