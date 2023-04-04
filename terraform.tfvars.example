@@ -1,3 +1,4 @@
+project = ""
 region             = ""
 environment        = ""
 terraform_location = ""
@@ -12,4 +13,17 @@ master_password           = ""
 node_type                 = ""
 cluster_type              = ""
 cluster_subnet_group_name = ""
-aws_region_cidr_block     = ""
+
+aws_region_cidr_block                = ""
+firehose_data_table_name             = ""
+firehose_data_table_columns          = ""
+firehose_copy_options                = ""
+redshift_retry_duration              = ""
+redshift_data_statement              = ""
+kinesis_s3_buffer_size               = 0
+kinesis_backup_s3_buffer_size        = 0
+kinesis_s3_buffer_interval           = 0
+kinesis_backup_s3_buffer_interval    = 0
+kinesis_backup_s3_compression_format = ""
+kinesis_s3_compression_format        = ""
+api_gateway_key_required = false
