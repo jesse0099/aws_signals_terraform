@@ -33,7 +33,7 @@ locals {
   kinesis_backup_s3_buffer_interval    = var.kinesis_backup_s3_buffer_interval
   kinesis_backup_s3_compression_format = var.kinesis_backup_s3_compression_format
   kinesis_s3_compression_format        = var.kinesis_s3_compression_format
-  api_gateway_key_required = var.api_gateway_key_required
+  api_gateway_key_required             = var.api_gateway_key_required
 }
 
 provider "aws" {
@@ -229,12 +229,70 @@ resource "aws_security_group" "signal_firehose_ingress" {
   description = "Firehose ingress access to Redshift cluster."
   vpc_id      = local.vpc_id
 
-  ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = [local.aws_region_cidr_block]
+ingress = [
+  {
+    cidr_blocks = [
+      "3.239.196.201/32",
+    ]
+    description      = "Primary VPC exit node"
+    from_port        = 5439
+    ipv6_cidr_blocks = []
+    prefix_list_ids  = []
+    protocol         = "tcp"
+    security_groups  = []
+    self             = false
+    to_port          = 5439
+  },
+  {
+    cidr_blocks      = [local.aws_region_cidr_block]
+    description      = ""
+    from_port        = 0
+    ipv6_cidr_blocks = []
+    prefix_list_ids  = []
+    protocol         = "-1"
+    security_groups  = []
+    self             = false
+    to_port          = 0    
+  },
+  {
+    cidr_blocks      = [
+      "3.231.203.123/32",
+    ]
+    description      = "Signals Backend Machine"
+    from_port        = 5439
+    ipv6_cidr_blocks = []
+    prefix_list_ids  = []
+    protocol         = "tcp"
+    security_groups  = []
+    self             = false
+    to_port          = 5439
   }
+]
+  # ingress {
+  #   cidr_blocks = [
+  #     "3.239.196.201/32",
+  #   ]
+  #   description      = "Primary VPC Tailscale VPN"
+  #   from_port        = 5439
+  #   ipv6_cidr_blocks = []
+  #   prefix_list_ids  = []
+  #   protocol         = "tcp"
+  #   security_groups  = []
+  #   self             = false
+  #   to_port          = 5439
+  # }
+
+  # ingress {
+  #   cidr_blocks      = [local.aws_region_cidr_block]
+  #   description      = ""
+  #   from_port        = 0
+  #   ipv6_cidr_blocks = []
+  #   prefix_list_ids  = []
+  #   protocol         = "-1"
+  #   security_groups  = []
+  #   self             = false
+  #   to_port          = 0
+  # }
 
   egress {
     from_port   = 0
@@ -325,11 +383,11 @@ resource "aws_kinesis_firehose_delivery_stream" "signal_firehose" {
   }
 
   s3_configuration {
-    role_arn        = aws_iam_role.firehose_role.arn
-    bucket_arn      = aws_s3_bucket.signal_bucket.arn
-    prefix          = "${local.project}-inputs-${local.environment}-"
-    buffer_size     = local.kinesis_s3_buffer_size
-    buffer_interval = local.kinesis_s3_buffer_interval
+    role_arn           = aws_iam_role.firehose_role.arn
+    bucket_arn         = aws_s3_bucket.signal_bucket.arn
+    prefix             = "${local.project}-inputs-${local.environment}-"
+    buffer_size        = local.kinesis_s3_buffer_size
+    buffer_interval    = local.kinesis_s3_buffer_interval
     compression_format = local.kinesis_s3_compression_format
   }
 
@@ -345,11 +403,11 @@ resource "aws_kinesis_firehose_delivery_stream" "signal_firehose" {
     retry_duration     = local.redshift_retry_duration
 
     s3_backup_configuration {
-      role_arn        = aws_iam_role.firehose_role.arn
-      bucket_arn      = aws_s3_bucket.signal_bucket.arn
-      buffer_size     = local.kinesis_backup_s3_buffer_size
-      buffer_interval = local.kinesis_backup_s3_buffer_interval
-      prefix          = "${local.project}-backups-${local.environment}-"
+      role_arn           = aws_iam_role.firehose_role.arn
+      bucket_arn         = aws_s3_bucket.signal_bucket.arn
+      buffer_size        = local.kinesis_backup_s3_buffer_size
+      buffer_interval    = local.kinesis_backup_s3_buffer_interval
+      prefix             = "${local.project}-backups-${local.environment}-"
       compression_format = local.kinesis_backup_s3_compression_format
     }
   }
@@ -398,7 +456,7 @@ resource "aws_api_gateway_method_response" "signal_post_200_response" {
   status_code = "200"
 
   response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
+    "method.response.header.Access-Control-Allow-Origin"  = false
     "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Headers" = true
   }
