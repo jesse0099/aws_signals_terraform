@@ -205,3 +205,8 @@ variable "kinesis_backup_s3_compression_format" {
    Valid values are: GZIP, ZIP, Snappy, and HADOOP_SNAPPY.
 EOT
 }
+
+variable "signals_backend_machine_public_ip" {
+  type        = string
+  description = "Signals Project Backend Machine Public IP Address."
+}

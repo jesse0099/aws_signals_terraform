@@ -33,7 +33,9 @@ locals {
   kinesis_backup_s3_buffer_interval    = var.kinesis_backup_s3_buffer_interval
   kinesis_backup_s3_compression_format = var.kinesis_backup_s3_compression_format
   kinesis_s3_compression_format        = var.kinesis_s3_compression_format
-  api_gateway_key_required = var.api_gateway_key_required
+  api_gateway_key_required             = var.api_gateway_key_required
+  #SIGNALS PROJECT EXTERNAL RESOURCES
+  signals_backend_machine_public_ip = var.signals_backend_machine_public_ip
 }
 
 provider "aws" {
@@ -229,12 +231,45 @@ resource "aws_security_group" "signal_firehose_ingress" {
   description = "Firehose ingress access to Redshift cluster."
   vpc_id      = local.vpc_id
 
-  ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = [local.aws_region_cidr_block]
-  }
+  ingress = [
+    {
+      cidr_blocks = [
+        "3.239.196.201/32",
+      ]
+      description      = "Primary VPC exit node"
+      from_port        = 5439
+      ipv6_cidr_blocks = []
+      prefix_list_ids  = []
+      protocol         = "tcp"
+      security_groups  = []
+      self             = false
+      to_port          = 5439
+    },
+    {
+      cidr_blocks      = [local.aws_region_cidr_block]
+      description      = ""
+      from_port        = 0
+      ipv6_cidr_blocks = []
+      prefix_list_ids  = []
+      protocol         = "-1"
+      security_groups  = []
+      self             = false
+      to_port          = 0
+    },
+    {
+      cidr_blocks = [
+        local.signals_backend_machine_public_ip,
+      ]
+      description      = "Signals Backend Machine"
+      from_port        = 5439
+      ipv6_cidr_blocks = []
+      prefix_list_ids  = []
+      protocol         = "tcp"
+      security_groups  = []
+      self             = false
+      to_port          = 5439
+    }
+  ]
 
   egress {
     from_port   = 0
